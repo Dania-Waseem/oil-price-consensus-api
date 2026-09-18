@@ -49,7 +49,7 @@ Then open `http://localhost:8000/dashboard` for a live view, or query the endpoi
 | TTL purge / rollup | `storage/db_manager.py::purge_and_rollup` |
 | SLA tests | `tests/` |
 
-## Sample outputs
+## Sample output
 <img width="1202" height="706" alt="image" src="https://github.com/user-attachments/assets/79b234cd-f5db-427a-968a-4f91b6b77fe3" />
 
 
