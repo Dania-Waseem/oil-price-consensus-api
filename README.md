@@ -1,86 +1,43 @@
 # WTI Consensus Oracle
 
-Live WTI oil price feed with multi-source consensus, standardized agent-ready REST payload,
-PostgreSQL/JSONB storage with TTL lifecycle, and an SLA test suite.
+A live WTI crude oil price feed built for autonomous agents. It pulls the price from two
+independent sources, cross-verifies them into a single trusted consensus value with a
+confidence/quality score, stores it in PostgreSQL with a TTL-based lifecycle, and serves it
+through a standardized REST API - with an automated test suite covering latency, freshness,
+availability, and source failover.
 
-Endpoint: `GET /v1/energy/commodity/price?commodity=WTI&tenor=spot`
+## Endpoint
+GET /v1/energy/commodity/price?commodity=WTI&tenor=spot
 
-## 0. Prerequisites
+Returns a standardized envelope: the price plus full metadata on freshness, provenance, and trust.
 
-- Python 3.10+
-- Docker Desktop (easiest way to get Postgres running without installing it natively)
+## Architecture
 
-## 1. Start Postgres (via Docker - no native install needed)
+<img width="2720" height="2064" alt="wti_oracle_architecture" src="https://github.com/user-attachments/assets/5f193f66-816f-4360-8b92-bfc15b942947" />
 
-```bash
-docker compose up -d
-```
+- **Two independent sources** (Yahoo Finance, Alpha Vantage) each fetch the current price on their own.
+- A **consensus engine** averages them and rejects any reading that disagrees too far from the rest.
+- The agreed value is written to **PostgreSQL** (JSONB), with raw readings, consensus history, and rolled-up summaries kept in separate tables.
+- A **FastAPI service** reads only the latest row from Postgres and serves it - it never talks to the internet on a live request, which keeps every response fast.
+- **Ingestion and serving only communicate through the database** - one provider failing never takes the API down; it just serves the most recent good result and reports its age honestly.
 
-This starts a Postgres 16 container on `localhost:5432` with user `oiluser`, password `oilpass`,
-database `oildata` (matches `.env.example`). Data persists in a Docker volume between restarts.
+## Tech stack
 
-To confirm it's running: `docker ps` should show a `db` container as "healthy"/"Up".
+Python - FastAPI - PostgreSQL (JSONB) - pytest
 
-(If you'd rather install Postgres natively instead of Docker, install it from postgresql.org,
-then create a database and user matching `.env.example`, and skip the `docker compose` step.)
 
-## 2. Get a free Alpha Vantage API key (our second data source)
-
-1. Go to `https://www.alphavantage.co/support/#api-key`
-2. Enter your email, click "GET FREE API KEY" - it appears instantly, no card, no CAPTCHA.
-3. Keep it handy for Step 3 below.
-
-(Our first source, Yahoo Finance, needs no key at all.)
-
-## 3. Python environment
+## Running it
 
 ```bash
-python -m venv venv
-source venv/bin/activate        # on Windows: venv\Scripts\activate
+docker compose up -d              # Postgres
+cp .env.example .env              # add your Alpha Vantage key (free, instant)
 pip install -r requirements.txt
-cp .env.example .env
+python main.py                    # sets up DB, runs worker + API + tests
 ```
 
-Now open `.env` and paste your Alpha Vantage key in place of `your_key_here`.
+Then open `http://localhost:8000/dashboard` for a live view, or query the endpoint directly.
 
-## 4. Create the database tables
-
-```bash
-python db/init_db.py
-```
-
-You should see `Database schema created successfully.`
-
-## 5. Run the background worker (keep this running in its own terminal)
-
-```bash
-python -m worker.background_worker
-```
-
-This fetches WTI prices from two providers every 60 seconds, runs consensus, and writes to
-Postgres. Let it run for at least one cycle before hitting the API.
-
-## 6. Run the API (in a second terminal)
-
-```bash
-uvicorn api.main:app --reload
-```
-
-Then visit: `http://localhost:8000/v1/energy/commodity/price?commodity=WTI`
-
-Interactive API docs are auto-generated at `http://localhost:8000/docs`.
-
-## 7. Run the test suite
-
-```bash
-pytest -v
-```
-
-(`test_availability.py`, `test_latency.py`, and `test_freshness_sla.py` need the API + DB
-reachable; `test_consensus.py` and `test_failover.py` are pure unit tests and need nothing
-running at all.)
-
-## How it satisfies the assignment requirements
+## What it satisfies
 
 | Requirement | Where |
 |---|---|
